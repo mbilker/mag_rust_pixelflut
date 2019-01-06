@@ -1,9 +1,7 @@
 #[macro_use] extern crate lazy_static;
 
 use std::io::{self, Read, Write};
-use std::mem;
 use std::net::{Ipv4Addr, TcpStream};
-use std::os::windows::io::FromRawSocket;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -14,22 +12,10 @@ use failure::Fallible;
 use image::{GenericImageView, Pixel};
 use rand::Rng;
 use rand::seq::SliceRandom;
-use winapi::um::winsock2::{
-    INVALID_SOCKET,
-    SOCK_STREAM,
-    SOCKET_ERROR,
-    WSADATA,
-    WSACleanup,
-    WSAGetLastError,
-    WSAStartup,
-    connect,
-    htons,
-    bind,
-    socket,
-};
-use winapi::shared::inaddr::IN_ADDR;
-use winapi::shared::minwindef::MAKEWORD;
-use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_INET, IPPROTO_TCP, SOCKADDR, SOCKADDR_IN};
+
+mod socket;
+
+use crate::socket::{cleanup_sockets, init_sockets, make_socket};
 
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 768;
@@ -48,49 +34,8 @@ struct Pixelflut {
 
 impl Pixelflut {
     fn new(local_addr: Ipv4Addr) -> Self {
-        let local_addr = u32::from(local_addr).to_be();
-        let remote_addr = u32::from(Ipv4Addr::new(10, 13, 38, 233)).to_be();
-        let stream = unsafe {
-            let socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP as _);
-            if socket == INVALID_SOCKET {
-                panic!("socket invalid, failed with: {}", WSAGetLastError());
-            } else {
-                println!("got socket");
-            }
-
-            let mut addr: IN_ADDR = mem::zeroed();
-            *addr.S_un.S_addr_mut() = local_addr;
-
-            let local_service = SOCKADDR_IN {
-                sin_family: AF_INET as ADDRESS_FAMILY,
-                sin_port: htons(0),
-                sin_addr: addr,
-                sin_zero: [0; 8],
-            };
-            let result = bind(socket, mem::transmute(&local_service), mem::size_of::<SOCKADDR_IN>() as i32);
-            println!("bind result: {}", result);
-
-            if result == SOCKET_ERROR {
-                let result = WSAGetLastError();
-                println!("WSAGetLastError: {}", result);
-
-                ::std::process::exit(1);
-            }
-
-            let mut addr: IN_ADDR = mem::zeroed();
-            *addr.S_un.S_addr_mut() = remote_addr;
-
-            let remote_service = SOCKADDR_IN {
-                sin_family: AF_INET as ADDRESS_FAMILY,
-                sin_port: htons(1234),
-                sin_addr: addr,
-                sin_zero: [0; 8],
-            };
-            let result = connect(socket, mem::transmute(&remote_service), mem::size_of::<SOCKADDR_IN>() as i32);
-            println!("connect result: {}", result);
-
-            TcpStream::from_raw_socket(socket as _)
-        };
+        let remote_addr = Ipv4Addr::new(10, 13, 38, 233);
+        let stream = make_socket(local_addr, remote_addr);
         Self {
             stream,
         }
@@ -284,11 +229,7 @@ fn main() {
     ];
     let mut handles = Vec::with_capacity(8);
 
-    unsafe {
-        let mut wsa_data: WSADATA = mem::uninitialized();
-
-        WSAStartup(MAKEWORD(2, 2), &mut wsa_data);
-    };
+    init_sockets();
 
     handles.push(thread::spawn(move || {
         canvas_thread().unwrap();
@@ -310,5 +251,5 @@ fn main() {
         handle.join().unwrap();
     }
 
-    unsafe { WSACleanup() };
+    cleanup_sockets();
 }

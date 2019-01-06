@@ -10,4 +10,9 @@ failure = "0.1.5"
 image = "0.20.1"
 lazy_static = "1.2.0"
 rand = "0.6.3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.6", features = ["winsock2"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+libc = "0.2.46"
