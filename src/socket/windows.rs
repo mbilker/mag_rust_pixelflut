@@ -1,5 +1,5 @@
 use std::mem;
-use std::net::{Ipv4Addr, TcpStream};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::os::windows::io::FromRawSocket;
 
 use winapi::um::winsock2::{
@@ -19,6 +19,11 @@ use winapi::shared::inaddr::IN_ADDR;
 use winapi::shared::minwindef::MAKEWORD;
 use winapi::shared::ws2def::{ADDRESS_FAMILY, AF_INET, IPPROTO_TCP, SOCKADDR_IN};
 
+const ADDRS: &[Ipv4Addr] = &[
+  Ipv4Addr::new(10, 13, 38, 159),
+  Ipv4Addr::new(10, 13, 39, 162),
+];
+
 #[inline]
 pub fn init_sockets() {
   unsafe {
@@ -35,9 +40,9 @@ pub fn cleanup_sockets() {
   }
 }
 
-pub fn make_socket(local_addr: Ipv4Addr, remote_addr: Ipv4Addr) -> TcpStream {
-  let local_addr = u32::from(local_addr).to_be();
-  let remote_addr = u32::from(remote_addr).to_be();
+pub fn make_socket(if_index: usize, remote_socket: SocketAddrV4) -> TcpStream {
+  let local_addr = u32::from(ADDRS[if_index % ADDRS.len()]).to_be(),
+  let remote_addr = u32::from(*remote_socket.ip()).to_be();
 
   unsafe {
     let socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP as _);
@@ -66,7 +71,7 @@ pub fn make_socket(local_addr: Ipv4Addr, remote_addr: Ipv4Addr) -> TcpStream {
 
     let remote_service = SOCKADDR_IN {
       sin_family: AF_INET as ADDRESS_FAMILY,
-      sin_port: htons(1234),
+      sin_port: htons(remote_socket.port()),
       sin_addr: addr,
       sin_zero: [0; 8],
     };
